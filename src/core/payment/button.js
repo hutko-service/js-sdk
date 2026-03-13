@@ -2,7 +2,7 @@ import { Module } from '../module.js'
 import { Api } from '../api.js'
 import { PaymentRequestApi } from './request.js'
 import { PaymentElement } from './element.js'
-import { forEach } from '../utils.js'
+import { forEach, isFunction } from '../utils.js'
 import { ApiOrigin, ApiEndpoint } from '../config.js'
 
 export const PaymentButton = Module.extend({
@@ -23,6 +23,9 @@ export const PaymentButton = Module.extend({
     before(defer) {
       defer.resolve()
     },
+    after(defer, params) {
+      defer.resolve(params)
+    },
   },
   init(params) {
     this.elements = {}
@@ -33,7 +36,8 @@ export const PaymentButton = Module.extend({
       origin: params.origin || this.defaults.origin,
       endpoint: this.utils.extend({}, this.defaults.endpoint, params.endpoint),
       style: this.utils.extend({}, this.defaults.style, params.style),
-      before: params.before || this.defaults.before,
+      before: isFunction(params.before) ? params.before : this.defaults.before,
+      after: isFunction(params.after) ? params.after : this.defaults.after,
       data: this.utils.extend({}, this.defaults.data, params.data),
     }
     this.initApi(params.api)
@@ -58,10 +62,12 @@ export const PaymentButton = Module.extend({
     }
   },
   initPaymentRequestApi() {
-    this.request = new PaymentRequestApi()
+    this.request = new PaymentRequestApi({
+      before: this.params.before,
+      after: this.params.after,
+    })
     this.request.setApi(this.api)
     this.request.setMerchant(this.params.data.merchant_id)
-    this.request.setBeforeCallback(this.params.before)
     this.request.on('details', this.proxy('onDetails'))
     this.request.on('error', this.proxy('onError'))
   },
@@ -98,10 +104,16 @@ export const PaymentButton = Module.extend({
   },
   onDetails(cx, data) {
     this.api.scope(() => {
-      this.api
-        .request('api.checkout.form', 'request', this.utils.extend({}, this.params.data, data))
-        .done(this.proxy('onSuccess'))
-        .fail(this.proxy('onError'))
+      this.request.after(this.params.data).done((extendParams) => {
+        this.api
+          .request(
+            'api.checkout.form',
+            'request',
+            this.utils.extend({}, this.params.data, extendParams || {}, data)
+          )
+          .done(this.proxy('onSuccess'))
+          .fail(this.proxy('onError'))
+      })
     })
   },
   onSuccess(cx, data) {

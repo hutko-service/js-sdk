@@ -13,6 +13,7 @@ import { PaymentElement } from './core/payment/element.js'
 import { PaymentContainer } from './core/payment/container.js'
 import { WidgetForm } from './core/widget/form.js'
 import { WidgetButton } from './core/widget/button.js'
+import { Modal } from './core/modal.js'
 
 Component.add('Api', Api)
 Component.add('Connector', Connector)
@@ -26,6 +27,7 @@ Component.Utils = Utils
 Component.Config = Config
 Component.Api = Api
 Component.Module = Module
+Component.Modal = Modal
 Component.Connector = Connector
 Component.Response = Response
 Component.PaymentRequestApi = PaymentRequestApi
