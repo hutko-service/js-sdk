@@ -109,6 +109,16 @@ const PaymentRequestInterface = Module.extend({
   setMerchant(merchant) {
     this.merchant = merchant
   },
+  setBeforeCallback(beforeCallback) {
+    if (isFunction(beforeCallback)) {
+      this.params.before = beforeCallback
+    }
+  },
+  setAfterCallback(afterCallback) {
+    if (isFunction(afterCallback)) {
+      this.params.after = afterCallback
+    }
+  },
   setApi(api) {
     if (api instanceof Api) this.api = api
     return this
@@ -182,21 +192,26 @@ export const PaymentRequestApi = PaymentRequestInterface.extend({
     if (this.isPending()) return
     this.setPending(true)
     const defer = Deferred()
-    defer.always(
-      this.proxy(function () {
-        this.setPending(false)
-      })
-    )
-    this.beforeCallback(defer)
+    const context = this
+    defer.always(function () {
+      context.setPending(false)
+    })
+    this.params.before(defer)
+    return defer
+  },
+  after(params) {
+    const defer = Deferred()
+    this.params.after(defer, params)
     return defer
   },
   pay(method) {
     if (this.isPending()) return
     this.setPending(true)
-    const payload = this.getProviderPayload(method)
+    const context = this
     const response = Deferred()
+    const payload = this.getProviderPayload(method)
     response.always(function () {
-      this.setPending(false)
+      context.setPending(false)
     })
     if (this.isMethodSupported(method) === false) {
       return response.rejectWith(this, [{ test: true }])
@@ -207,17 +222,17 @@ export const PaymentRequestApi = PaymentRequestInterface.extend({
       this.makeNativePayment(response, payload)
     }
     return response
-      .done(function (details) {
-        this.trigger('details', {
-          payment_system: this.payload.payment_system,
-          data: details,
+      .done(function (data) {
+        context.trigger('details', {
+          payment_system: context.payload.payment_system,
+          data,
         })
       })
       .fail(function (error) {
-        this.trigger('error', error)
-        if (this.params.embedded === true) {
+        context.trigger('error', error)
+        if (context.params.embedded === true) {
           location.reload()
-          this.trigger('reload', this.params)
+          context.trigger('reload', context.params)
         }
       })
   },
