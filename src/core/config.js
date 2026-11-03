@@ -21,7 +21,21 @@ export const GoogleBaseRequest = {
       },
     },
   ],
+  // NB: intentionally NOT setting `existingPaymentMethodRequired` — the Google
+  // Pay button must be shown even to users without a saved card so they can
+  // enrol one during checkout (isReadyToPay defaults to allowing enrolment).
 }
+
+// Apple Pay: every parameter (merchantIdentifier, merchantCapabilities,
+// supportedNetworks, countryCode, line items, …) comes from the live gateway
+// payload (api.checkout.pay/methods -> /api/checkout/ajax/mobile_pay).
+// The SINGLE exception is `version`, which the SDK owns and negotiates at
+// runtime against the browser (ApplePaySession.supportsVersion), down from the
+// ceiling below. Keep this in sync with the highest version the payment
+// backend supports. Apple Pay on the web works in Safari and — since
+// iOS 18 / Feb 2025 — in third-party browsers (Chrome, Edge, Firefox) via the
+// W3C PaymentRequest API.
+export const ApplePayMaxVersion = 14
 
 export const GooglePayLanguages = [
   'ar',
@@ -97,7 +111,12 @@ export const ButtonFrameAttrs = {
   scrolling: 'no',
   frameborder: 0,
   allowtransparency: true,
+  // `allowpaymentrequest` is deprecated/removed in modern browsers; the
+  // Permissions-Policy `allow="payment"` is the current way to let a
+  // cross-origin iframe call the Payment Request / Apple Pay / Google Pay APIs.
+  // Keep both for backward compatibility.
   allowpaymentrequest: true,
+  allow: 'payment',
 }
 
 export const ButtonCoverCss = {

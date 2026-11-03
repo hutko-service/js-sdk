@@ -89,6 +89,9 @@ export const Api = Module.extend({
       allowtransparency: true,
       frameborder: 0,
       scrolling: 'no',
+      // Permissions-Policy so the gateway iframe may invoke Payment Request /
+      // Apple Pay / Google Pay when the wallet flow runs inside it.
+      allow: 'payment',
     })
     this.addAttr(this.iframe, { src: url })
     this.addCss(this.iframe, ApiFrameCss)

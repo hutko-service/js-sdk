@@ -64,6 +64,16 @@ const GooglePayClient = Module.extend({
     }
     return this.client
   },
+  // Official branded, localized, accessible Google Pay button (modern API),
+  // e.g. GooglePay.createButton({ buttonColor, buttonType, onClick,
+  // allowedPaymentMethods }). Preferred over a static gpay image. Requires the
+  // Google Pay JS API to be loaded (call load() first); returns null otherwise.
+  createButton(options) {
+    const client = this.getClient()
+    return client && this.utils.isFunction(client.createButton)
+      ? client.createButton(options || {})
+      : null
+  },
 })
 
 export const GooglePay = new GooglePayClient()
