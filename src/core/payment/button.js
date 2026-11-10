@@ -63,6 +63,7 @@ export const PaymentButton = Module.extend({
   },
   initPaymentRequestApi() {
     this.request = new PaymentRequestApi({
+      methods: this.params.methods,
       before: this.params.before,
       after: this.params.after,
     })
@@ -84,11 +85,12 @@ export const PaymentButton = Module.extend({
       gap: '1rem',
       'flex-direction': 'column',
     })
-    forEach(this.params.methods, function (method) {
+    forEach(this.params.methods, function (method, index) {
       const element = new PaymentElement({
         origin: origin,
         endpoint: endpoint,
         method: method,
+        index: Number(index),
         appendTo: appendTo,
         color: style.color,
         mode: style.mode,

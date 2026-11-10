@@ -1,26 +1,45 @@
 import { Module } from '../module.js'
 import { Api } from '../api.js'
 import { GooglePay } from '../google/pay.js'
+import { ApplePay } from '../apple/pay.js'
 import { Deferred } from '../deferred.js'
-import { getPaymentRequest, hasProp, isFunction } from '../utils.js'
+import { getPaymentRequest, isArray, isFunction, isPlainObject } from '../utils.js'
 import { GoogleBaseRequest, PaymentRequestDetails } from '../config.js'
+
+const canMakePaymentRequest = (config) => (done) => {
+  const request = getPaymentRequest([config], PaymentRequestDetails, {})
+  if (request === null) return done(false)
+  request
+    .canMakePayment()
+    .then(function (status) {
+      done(status === true)
+    })
+    .catch(function () {
+      done(false)
+    })
+}
+
+let applePayNative = false
 
 const getPaymentMethods = () => {
   return [
-    [
-      'google',
-      {
+    {
+      method: 'google',
+      check: canMakePaymentRequest({
         supportedMethods: 'https://google.com/pay',
         data: GoogleBaseRequest,
+      }),
+    },
+    {
+      // Native ApplePaySession only (Safari, any browser on iOS/iPadOS).
+      // Third-party browsers get it from Apple's JS SDK later, see getApplePaySdkSupport()
+      method: 'apple',
+      check: (done) => {
+        applePayNative = ApplePay.hasSession()
+        if (applePayNative === false) return done(false)
+        ApplePay.isAvailable().done(done)
       },
-    ],
-    [
-      'apple',
-      {
-        supportedMethods: 'https://apple.com/apple-pay',
-      },
-      () => hasProp(window, 'ApplePaySession'),
-    ],
+    },
   ]
 }
 
@@ -35,7 +54,6 @@ const getSupportedMethods = () => {
   if (requestDeferred) return requestDeferred
   requestDeferred = Deferred()
   const methods = getPaymentMethods()
-  const details = PaymentRequestDetails
   ;(function check() {
     const item = methods.shift()
     if (item === undefined) {
@@ -45,29 +63,44 @@ const getSupportedMethods = () => {
       }
       return requestDeferred.resolve(requestSupported)
     }
-    const method = item.shift()
-    const config = item.shift()
-    const callback = item.shift()
-    if (isFunction(callback) && callback() === false) {
+    item.check(function (status) {
+      if (status === true) requestSupported.provider.push(item.method)
       setTimeout(check, 25)
-      return false
-    }
-    const request = getPaymentRequest([config], details, {})
-    if (request) {
-      request
-        .canMakePayment()
-        .then(function (status) {
-          if (status === true) requestSupported.provider.push(method)
-          setTimeout(check, 25)
-        })
-        .catch(function () {
-          setTimeout(check, 25)
-        })
-    } else {
-      setTimeout(check, 25)
-    }
+    })
   })()
   return requestDeferred
+}
+
+let applePaySdkDeferred = null
+
+// Apple Pay in third-party browsers (Chrome, Edge, Firefox): Apple's JS SDK is loaded once per page,
+// when a gateway payload allows Apple Pay. Resolves with true when it adds Apple Pay to the supported methods.
+const getApplePaySdkSupport = () => {
+  if (applePaySdkDeferred) return applePaySdkDeferred
+  applePaySdkDeferred = Deferred()
+  const resolve = (status) => {
+    applePaySdkDeferred.resolve(status === true)
+  }
+  getSupportedMethods().done(function () {
+    // ApplePaySession existed when the supported methods were checked: that result is final
+    if (applePayNative) {
+      resolve(false)
+      return
+    }
+    ApplePay.load()
+      .done(function () {
+        ApplePay.isAvailable().done(function (status) {
+          if (status === true && requestSupported.provider.indexOf('apple') === -1) {
+            requestSupported.provider.push('apple')
+          }
+          resolve(status)
+        })
+      })
+      .fail(function () {
+        resolve(false)
+      })
+  })
+  return applePaySdkDeferred
 }
 
 const PaymentRequestInterface = Module.extend({
@@ -104,7 +137,36 @@ const PaymentRequestInterface = Module.extend({
   setPayload(payload) {
     this.payload = payload
     this.trigger('payload', payload)
+    this.loadExternalApi()
     return this
+  },
+  isMethodAllowed(method) {
+    const allowed = this.payload && this.payload.allowed
+    return isArray(allowed) && allowed.indexOf(method) !== -1
+  },
+  // params.methods: the buttons the merchant renders (PaymentButton `methods`), all methods by default
+  isMethodRequested(method) {
+    const methods = this.params.methods
+    return !isArray(methods) || methods.indexOf(method) !== -1
+  },
+  // Wallet scripts are loaded only for the methods the merchant renders and the gateway allows
+  loadExternalApi() {
+    if (this.isMethodRequested('google') && this.isMethodAllowed('google')) {
+      getSupportedMethods().done(function (supported) {
+        // Load pay.js before the click, so the payment sheet opens within the user gesture
+        if (supported.fallback) GooglePay.load()
+      })
+    }
+    if (
+      this.isMethodRequested('apple') &&
+      this.isMethodAllowed('apple') &&
+      !this.applePaySdkRequested
+    ) {
+      this.applePaySdkRequested = true
+      getApplePaySdkSupport().done((status) => {
+        if (status === true) this.setSupported(requestSupported)
+      })
+    }
   },
   setMerchant(merchant) {
     this.merchant = merchant
@@ -216,7 +278,9 @@ export const PaymentRequestApi = PaymentRequestInterface.extend({
     if (this.isMethodSupported(method) === false) {
       return response.rejectWith(this, [{ test: true }])
     }
-    if (this.isFallbackMethod(method)) {
+    if (method === 'apple') {
+      this.makeApplePayment(response, payload)
+    } else if (this.isFallbackMethod(method)) {
       this.makePaymentFallback(response, payload.methods)
     } else {
       this.makeNativePayment(response, payload)
@@ -239,24 +303,83 @@ export const PaymentRequestApi = PaymentRequestInterface.extend({
   makeNativePayment(defer, payload) {
     const self = this
     const request = getPaymentRequest(payload.methods, payload.details, payload.options)
-    this.addEvent(request, 'merchantvalidation', 'merchantValidation')
+    if (request === null) {
+      return defer.rejectWith(self, [{ message: 'PaymentRequest is not available' }])
+    }
+    // show() is called right away: awaiting canMakePayment() first may lose the user gesture
     request
-      .canMakePayment()
-      .then(function () {
-        request
-          .show()
-          .then(function (response) {
-            response.complete('success').then(function () {
-              defer.resolveWith(self, [response.details])
-            })
-          })
-          .catch(function (e) {
-            defer.rejectWith(self, [{ code: e.code, message: e.message }])
-          })
+      .show()
+      .then(function (response) {
+        response.complete('success').then(function () {
+          defer.resolveWith(self, [response.details])
+        })
       })
       .catch(function (e) {
         defer.rejectWith(self, [{ code: e.code, message: e.message }])
       })
+  },
+  // Apple Pay JS API: ApplePaySession is created and started synchronously in the click handler,
+  // otherwise the browser rejects it as not triggered by a user gesture.
+  makeApplePayment(defer, payload) {
+    const self = this
+    const reject = function (error) {
+      defer.rejectWith(self, [error])
+    }
+    let session
+    try {
+      session = ApplePay.createSession(payload)
+    } catch (e) {
+      return reject({ code: e.code, message: e.message })
+    }
+    const abort = function (error) {
+      // reject before abort(): it may trigger oncancel, whose code 20 consumers treat as a user cancel
+      reject(error)
+      try {
+        session.abort()
+      } catch (e) {}
+    }
+    session.onvalidatemerchant = function (event) {
+      self
+        .appleSession({
+          url: event.validationURL,
+          domain: location.host,
+          merchant_id: self.merchant,
+        })
+        .done(function (data) {
+          const merchantSession = data && data.data
+          // The gateway answers {status: 'fail', reason} without a merchant session
+          // (Apple Pay disabled, domain not registered). Apple's JS SDK doesn't throw on an empty one.
+          if (!isPlainObject(merchantSession) || Object.keys(merchantSession).length === 0) {
+            abort({
+              message: 'Apple Pay merchant validation failed',
+              reason: (data && data.reason) || null,
+            })
+          } else {
+            try {
+              session.completeMerchantValidation(merchantSession)
+            } catch (e) {
+              abort({ code: e.code, message: e.message })
+            }
+          }
+        })
+        .fail(function (error) {
+          abort(error)
+        })
+    }
+    session.onpaymentauthorized = function (event) {
+      try {
+        session.completePayment(ApplePay.getStatusSuccess())
+      } catch (e) {}
+      defer.resolveWith(self, [event.payment])
+    }
+    session.oncancel = function () {
+      reject({ code: 20, message: 'Payment request was cancelled' })
+    }
+    try {
+      session.begin()
+    } catch (e) {
+      reject({ code: e.code, message: e.message })
+    }
   },
   makePaymentFallback(defer, methods) {
     const self = this
@@ -283,24 +406,5 @@ export const PaymentRequestApi = PaymentRequestInterface.extend({
       }
     )
     return defer
-  },
-  merchantValidation(cx, event) {
-    const { validationURL } = event
-    const { host } = location
-    this.appleSession({
-      url: validationURL,
-      domain: host,
-      merchant_id: this.merchant,
-    })
-      .done(function (session) {
-        try {
-          event.complete(session.data)
-        } catch (error) {
-          this.trigger('error', error)
-        }
-      })
-      .fail(function (error) {
-        this.trigger('error', error)
-      })
   },
 })

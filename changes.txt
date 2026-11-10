@@ -1,0 +1,32 @@
+10.11.2026 => 2.1.0
+    * Apple Pay in the third-party desktop browsers (Chrome, Edge, Firefox): the payment is confirmed on an iPhone via
+      the QR code; Apple Pay JS SDK (1.latest) is loaded only when there is no native ApplePaySession and the gateway
+      allows Apple Pay
+    * Apple Pay uses ApplePaySession instead of PaymentRequest; the button is shown only if supportsVersion() and
+      canMakePayments() are true (no Apple Pay on Android); a failed merchant validation aborts the session
+    * Google Pay: show() is called without canMakePayment() (the user gesture is kept), pay.js is preloaded only when
+      the gateway allows Google Pay
+    * allow="payment" on the API and button iframes
+    * The buttons are shown when the method is supported by both the browser and the gateway, in the "methods" order
+    * README: "Apple Pay" and "Content Security Policy" sections; tests: test/apple-pay.test.js
+
+13.03.2026 => 2.0.6
+    * The "after" callback of PaymentButton: called before "api.checkout.form", its result extends the form params
+      (HC-32)
+    * PaymentRequestApi gets the "before"/"after" callbacks in its params, setAfterCallback() was added
+    * pay(): the pending state reset and the "details"/"error" events use the PaymentRequestApi context
+    * $checkout.Modal was exported
+
+30.05.2025 => 2.0.5
+    * Api: scope() waits for DOMContentLoaded; the "container" option for the API iframe (default "body")
+    * The modal "close" event handler was fixed
+    * Deferred: done() on an already resolved deferred calls the callback
+    * PaymentButton: the gateway request on init only with merchant_id and token or amount + currency
+    * PaymentRequestApi: only the last "pending" state is triggered
+    * PaymentContainer: "allowed" in the parsed config
+
+20.05.2025 => 1.2.3
+    * README: jsDelivr CDN instead of unpkg; package.json: repository, keywords
+
+13.03.2025 => 1.2.2
+    * Initial version
