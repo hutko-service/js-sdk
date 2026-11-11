@@ -1,5 +1,4 @@
 11.11.2026 => 2.1.0-beta.0
-10.11.2026 => 2.1.0
     * Apple Pay in the third-party desktop browsers (Chrome, Edge, Firefox): the payment is confirmed on an iPhone via
       the QR code; Apple Pay JS SDK (1.latest) is loaded only when there is no native ApplePaySession and the gateway
       allows Apple Pay
