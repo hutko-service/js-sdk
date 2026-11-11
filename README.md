@@ -97,6 +97,59 @@ git clone git@github.com:hutkorg/js-sdk.git
 </html>
 ```
 
+### Apple Pay
+
+| Browser | Apple Pay |
+|---|---|
+| Safari on macOS, any browser on iOS/iPadOS | native payment sheet |
+| Chrome, Edge, Firefox on desktop | the customer scans a QR code and pays on iPhone (iOS 18 or later) |
+| Browsers on Android | not available, the button is not shown |
+
+- In Chrome, Edge and Firefox this SDK loads
+  [Apple Pay JS SDK](https://developer.apple.com/documentation/applepayontheweb) (`https://applepay.cdn-apple.com/jsapi/1.latest/apple-pay-sdk.js`)
+  only when `methods` includes `apple` and Apple Pay is enabled for the merchant. If it can't be
+  loaded (blocked by CSP or a content blocker), the Apple Pay button is not shown.
+- Apple Pay works only on a domain registered for Apple Pay, the same as in Safari.
+- The payment sheet must be opened by the customer's click. If you pass the `before` callback to
+  `PaymentButton`, resolve it synchronously, otherwise the browser refuses to open Apple Pay:
+
+```js
+$checkout.get('PaymentButton', {
+  // ...
+  before: function (defer) {
+    // synchronous checks only, e.g. form validation
+    defer.resolve()
+  },
+})
+```
+
+- Apple Pay JS SDK assigns `window.onbeforeunload`. Use
+  `window.addEventListener('beforeunload', ...)` for your own handlers.
+
+## Content Security Policy
+
+If your site sends a `Content-Security-Policy` header, allow the following sources.
+
+| Directive | Source | Used for |
+|---|---|---|
+| `script-src` | `https://cdn.jsdelivr.net` | the SDK, if loaded from the CDN |
+| `frame-src` | `https://pay.hutko.org` | payment gateway and payment button frames (or your `origin`) |
+| `script-src`, `frame-src` | `https://applepay.cdn-apple.com` | Apple Pay in Chrome, Edge, Firefox: Apple Pay JS SDK and its QR code dialog |
+| `script-src`, `frame-src`, `connect-src` | `https://pay.google.com` | Google Pay in Safari, Firefox and other browsers without Google Pay in the Payment Request API: Google Pay JS (`pay.js`) |
+| `connect-src` | `https://google.com`, `https://www.google.com`, `https://pay.google.com` | Google Pay in Chrome: the payment method manifest of `https://google.com/pay` and its redirects |
+
+Example:
+
+```
+Content-Security-Policy:
+  script-src 'self' https://cdn.jsdelivr.net https://applepay.cdn-apple.com https://pay.google.com;
+  frame-src https://pay.hutko.org https://applepay.cdn-apple.com https://pay.google.com;
+  connect-src 'self' https://google.com https://www.google.com https://pay.google.com
+```
+
+If you add the payment button to your own `<iframe>`, allow payments in it: `<iframe allow="payment" ...>`.
+A `Permissions-Policy` header of your page must not disable `payment`.
+
 ## Parameters
 
 ### Host-to-host token

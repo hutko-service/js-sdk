@@ -15,6 +15,7 @@ import { PaymentRequestApi } from './request.js'
 export const PaymentElement = Module.extend({
   defaults: {
     method: null,
+    index: 0,
     appendTo: null,
     className: 'payment-element',
     origin: ApiOrigin,
@@ -58,6 +59,7 @@ export const PaymentElement = Module.extend({
     this.addEvent(this.iframe, 'error', 'errorConnector')
     this.addAttr(this.element, {
       class: this.params.className,
+      'data-index': this.params.index,
     })
     this.element.appendChild(this.iframe)
     this.element.appendChild(this.button)
@@ -87,13 +89,21 @@ export const PaymentElement = Module.extend({
     this.request.pay(this.params.method)
   },
   onClickFail() {},
+  // Supported methods may be updated after the payload: Apple Pay in third-party browsers
+  // becomes supported once Apple's JS SDK is loaded, so the button needs both states.
   onSupported(cx, supported) {
-    if (supported.provider.includes(this.params.method)) {
+    this.supported = (supported.provider || []).includes(this.params.method)
+    if (this.supported) {
       this.mount()
     }
+    this.render()
   },
   onPayload(cx, payload) {
-    if (payload.allowed.includes(this.params.method)) {
+    this.allowed = (payload.allowed || []).includes(this.params.method)
+    this.render()
+  },
+  render() {
+    if (this.supported && this.allowed) {
       this.show()
     }
   },
@@ -122,11 +132,20 @@ export const PaymentElement = Module.extend({
   },
   appendTo(appendTo) {
     const container = this.utils.querySelector(appendTo)
-    if (container) container.appendChild(this.element)
+    if (container) container.insertBefore(this.element, this.getNextElement(container))
     this.initEvents()
     return this
   },
+  // Keeps the order of the methods when a button is mounted later than the next one
+  getNextElement(container) {
+    const index = this.params.index
+    const next = this.utils.toArray(container.children).find(function (element) {
+      return Number(element.getAttribute('data-index')) > index
+    })
+    return next || null
+  },
   mount() {
+    if (this.isMounted()) return
     this.appendTo(this.params.appendTo)
   },
   isMounted() {

@@ -9,6 +9,16 @@ export const ProxyUrl = 'http://secure-redirect.cloudipsp.com/submit/'
 
 export const GooglePayApi = 'https://pay.google.com/gp/p/js/pay.js'
 
+// Apple's JS SDK: provides ApplePaySession in third-party browsers (Chrome, Edge, Firefox).
+// Only the `1.latest` build includes it, pinned builds (e.g. `1.2.0`) don't.
+// `components`: without it the SDK also loads the Apple Wallet button, which adds a <style> to the page.
+// `apple-pay-button` is the smallest documented set, the buttons are rendered by this SDK.
+export const ApplePayApi =
+  'https://applepay.cdn-apple.com/jsapi/1.latest/apple-pay-sdk.js?components=apple-pay-button'
+
+// Minimum Apple Pay JS API version for the button, also used when the gateway payload has no version
+export const ApplePayVersion = 3
+
 export const GoogleBaseRequest = {
   apiVersion: 2,
   apiVersionMinor: 0,
@@ -97,7 +107,9 @@ export const ButtonFrameAttrs = {
   scrolling: 'no',
   frameborder: 0,
   allowtransparency: true,
+  // `allowpaymentrequest` is deprecated, Permissions-Policy `allow="payment"` replaces it
   allowpaymentrequest: true,
+  allow: 'payment',
 }
 
 export const ButtonCoverCss = {

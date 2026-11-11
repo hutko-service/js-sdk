@@ -89,6 +89,7 @@ export const Api = Module.extend({
       allowtransparency: true,
       frameborder: 0,
       scrolling: 'no',
+      allow: 'payment',
     })
     this.addAttr(this.iframe, { src: url })
     this.addCss(this.iframe, ApiFrameCss)
